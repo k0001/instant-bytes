@@ -1,5 +1,5 @@
 name:                instant-bytes
-version:             0.0.1
+version:             0.1
 author:              Renzo Carbonara
 maintainer:          renzo@carbonara.com.ar
 copyright:           Renzo Carbonara 2015
@@ -9,6 +9,7 @@ category:            Web
 build-type:          Simple
 extra-source-files:  README.md CHANGELOG.md
 cabal-version:       >=1.18
+synopsis:            Generic Serial instances through instant-generics
 
 library
   hs-source-dirs: src/lib

@@ -5,10 +5,16 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
+
 module Generics.Instant.Functions.Bytes
-  ( GSerial
-  , gserialize
+  ( -- $defaults
+    gserialize
   , gdeserialize
+    -- * Internals
+  , GSerial
+    -- ** Even more internal
+  , GSumSerial
+  , GSumSize
   ) where
 
 import qualified Data.Bytes.Serial as Bytes
@@ -20,6 +26,17 @@ import Generics.Instant
 import Prelude
 
 --------------------------------------------------------------------------------
+-- $defaults
+--
+-- You can use 'gserialize' and 'gdeserialize' as your generic 'Bytes.serialize'
+-- and 'Bytes.deserialize' implementations for any 'Representable' type as
+-- follows:
+--
+-- @
+-- instance 'Bytes.Serial' MyType where
+--    serialize = 'gserialize'
+--    deserialize = 'gdeserialize'
+-- @
 
 gserialize :: (Representable a, GSerial (Rep a), Bytes.MonadPut m) => a -> m ()
 gserialize = \a -> gserialize' (from a)
@@ -51,8 +68,9 @@ instance GSerial a => GSerial (CEq c p p a) where
   gdeserialize' = gdeserialize' >>= \a -> return (C a)
   {-# INLINE gdeserialize' #-}
 
-instance {-# OVERLAPPABLE #-} GSerial (CEq c p q a) where
-  gserialize' _ = fail "Generics.Instant.Functions.Serial.GSerial (CEq c p q a) gserialize' - impossible"
+instance {-# OVERLAPPABLE #-} GSerial a => GSerial (CEq c p q a) where
+  gserialize' (C a) = gserialize' a
+  {-# INLINE gserialize' #-}
   gdeserialize' = fail "Generics.Instant.Functions.Serial.GSerial (CEq c p q a) gdeserialize' - impossible"
 
 instance Bytes.Serial a => GSerial (Var a) where
@@ -87,7 +105,7 @@ instance (GSerial a, GSerial b) => GSerial (a :*: b) where
 -- use two bytes, and so on till 2^64-1.
 
 instance
-  ( GSum a, GSum b, GSerial a, GSerial b, SumSize a, SumSize b
+  ( GSumSerial a, GSumSerial b, GSerial a, GSerial b, GSumSize a, GSumSize b
   ) => GSerial (a :+: b)
   where
     {-# INLINABLE gserialize' #-}
@@ -132,17 +150,17 @@ sizeError s size =
 ------------------------------------------------------------------------
 
 checkGetSum
-  :: (Ord w, Num w, Bits w, GSum a, Bytes.MonadGet m) => w -> w -> m a
+  :: (Ord w, Num w, Bits w, GSumSerial a, Bytes.MonadGet m) => w -> w -> m a
 checkGetSum size code
   | code < size = getSum code size
   | otherwise = fail "Generics.Instant.Functions.Serial.checkGetSum: Unknown encoding for constructor"
 {-# INLINABLE checkGetSum #-}
 
-class GSum a where
+class GSumSerial a where
   putSum :: (Num w, Bits w, Bytes.Serial w, Bytes.MonadPut m) => w -> w -> a -> m ()
   getSum :: (Ord w, Num w, Bits w, Bytes.MonadGet m) => w -> w -> m a
 
-instance (GSum a, GSum b, GSerial a, GSerial b) => GSum (a :+: b) where
+instance (GSumSerial a, GSumSerial b, GSerial a, GSerial b) => GSumSerial (a :+: b) where
   {-# INLINE putSum #-}
   putSum !code !size x =
     let sizeL = size `shiftR` 1
@@ -158,30 +176,29 @@ instance (GSum a, GSum b, GSerial a, GSerial b) => GSum (a :+: b) where
       sizeL = size `shiftR` 1
       sizeR = size - sizeL
 
-instance GSerial a => GSum (CEq c p p a) where
+instance GSerial a => GSumSerial (CEq c p p a) where
   putSum !code _ ca = Bytes.serialize code >> gserialize' ca
   {-# INLINE putSum #-}
   getSum _ _ = gdeserialize'
   {-# INLINE getSum #-}
 
-instance {-# OVERLAPPABLE #-} GSerial a => GSum (CEq c p q a) where
-  putSum _ _ _ = fail "Generics.Instant.Functions.Serial.GSum (CEq c p q a) putSum - impossible"
+instance {-# OVERLAPPABLE #-} GSerial a => GSumSerial (CEq c p q a) where
+  putSum !code _ ca = Bytes.serialize code >> gserialize' ca
   {-# INLINE putSum #-}
-  getSum _ _ = fail "Generics.Instant.Functions.Serial.GSum (CEq c p q a) getSum - impossible"
-  {-# INLINE getSum #-}
+  getSum _ _ = fail "Generics.Instant.Functions.Serial.GSumSerial (CEq c p q a) getSum - impossible"
 
 ------------------------------------------------------------------------
 
-class SumSize a where
+class GSumSize a where
   sumSize :: Tagged a Word64
 
 newtype Tagged s b = Tagged {unTagged :: b}
 
-instance (SumSize a, SumSize b) => SumSize (a :+: b) where
+instance (GSumSize a, GSumSize b) => GSumSize (a :+: b) where
   {-# INLINE sumSize #-}
   sumSize = Tagged (unTagged (sumSize :: Tagged a Word64) +
                     unTagged (sumSize :: Tagged b Word64))
 
-instance SumSize (CEq c p q a) where
+instance GSumSize (CEq c p q a) where
   {-# INLINE sumSize #-}
   sumSize = Tagged 1
