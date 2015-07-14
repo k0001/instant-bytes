@@ -58,40 +58,40 @@ instance GSerial Z where
 
 instance GSerial U where
   gserialize' U = Bytes.serialize ()
-  {-# INLINE gserialize' #-}
+  {-# INLINABLE gserialize' #-}
   gdeserialize' = Bytes.deserialize >>= \() -> return U
-  {-# INLINE gdeserialize' #-}
+  {-# INLINABLE gdeserialize' #-}
 
 instance GSerial a => GSerial (CEq c p p a) where
   gserialize' (C a) = gserialize' a
-  {-# INLINE gserialize' #-}
+  {-# INLINABLE gserialize' #-}
   gdeserialize' = gdeserialize' >>= \a -> return (C a)
-  {-# INLINE gdeserialize' #-}
+  {-# INLINABLE gdeserialize' #-}
 
 instance {-# OVERLAPPABLE #-} GSerial a => GSerial (CEq c p q a) where
   gserialize' (C a) = gserialize' a
-  {-# INLINE gserialize' #-}
+  {-# INLINABLE gserialize' #-}
   gdeserialize' = fail "Generics.Instant.Functions.Serial.GSerial (CEq c p q a) gdeserialize' - impossible"
 
 instance Bytes.Serial a => GSerial (Var a) where
   gserialize' (Var a) = Bytes.serialize a
-  {-# INLINE gserialize' #-}
+  {-# INLINABLE gserialize' #-}
   gdeserialize' = Bytes.deserialize >>= \a -> return (Var a)
-  {-# INLINE gdeserialize' #-}
+  {-# INLINABLE gdeserialize' #-}
 
 instance Bytes.Serial a => GSerial (Rec a) where
   gserialize' (Rec a) = Bytes.serialize a
-  {-# INLINE gserialize' #-}
+  {-# INLINABLE gserialize' #-}
   gdeserialize' = Bytes.deserialize >>= \a -> return (Rec a)
-  {-# INLINE gdeserialize' #-}
+  {-# INLINABLE gdeserialize' #-}
 
 instance (GSerial a, GSerial b) => GSerial (a :*: b) where
   gserialize' (a :*: b) = gserialize' a >> gserialize' b
-  {-# INLINE gserialize' #-}
+  {-# INLINABLE gserialize' #-}
   gdeserialize' = gdeserialize' >>= \a ->
                   gdeserialize' >>= \b ->
                   return (a :*: b)
-  {-# INLINE gdeserialize' #-}
+  {-# INLINABLE gdeserialize' #-}
 
 ---
 
@@ -161,14 +161,14 @@ class GSumSerial a where
   getSum :: (Ord w, Num w, Bits w, Bytes.MonadGet m) => w -> w -> m a
 
 instance (GSumSerial a, GSumSerial b, GSerial a, GSerial b) => GSumSerial (a :+: b) where
-  {-# INLINE putSum #-}
+  {-# INLINABLE putSum #-}
   putSum !code !size x =
     let sizeL = size `shiftR` 1
         sizeR = size - sizeL
     in case x of
          L l -> putSum code           sizeL l
          R r -> putSum (code + sizeL) sizeR r
-  {-# INLINE getSum #-}
+  {-# INLINABLE getSum #-}
   getSum !code !size
     | code < sizeL = L <$> getSum code           sizeL
     | otherwise    = R <$> getSum (code - sizeL) sizeR
@@ -178,13 +178,13 @@ instance (GSumSerial a, GSumSerial b, GSerial a, GSerial b) => GSumSerial (a :+:
 
 instance GSerial a => GSumSerial (CEq c p p a) where
   putSum !code _ ca = Bytes.serialize code >> gserialize' ca
-  {-# INLINE putSum #-}
+  {-# INLINABLE putSum #-}
   getSum _ _ = gdeserialize'
-  {-# INLINE getSum #-}
+  {-# INLINABLE getSum #-}
 
 instance {-# OVERLAPPABLE #-} GSerial a => GSumSerial (CEq c p q a) where
   putSum !code _ ca = Bytes.serialize code >> gserialize' ca
-  {-# INLINE putSum #-}
+  {-# INLINABLE putSum #-}
   getSum _ _ = fail "Generics.Instant.Functions.Serial.GSumSerial (CEq c p q a) getSum - impossible"
 
 ------------------------------------------------------------------------
@@ -195,10 +195,10 @@ class GSumSize a where
 newtype Tagged s b = Tagged {unTagged :: b}
 
 instance (GSumSize a, GSumSize b) => GSumSize (a :+: b) where
-  {-# INLINE sumSize #-}
+  {-# INLINABLE sumSize #-}
   sumSize = Tagged (unTagged (sumSize :: Tagged a Word64) +
                     unTagged (sumSize :: Tagged b Word64))
 
 instance GSumSize (CEq c p q a) where
-  {-# INLINE sumSize #-}
+  {-# INLINABLE sumSize #-}
   sumSize = Tagged 1
