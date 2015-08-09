@@ -5,13 +5,15 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Generics.Instant.Functions.Bytes
   ( -- $defaults
-    gserialize
-  , gdeserialize
+    gserializeDefault
+  , gdeserializeDefault
+  , RepGSerial
     -- * Internals
-  , GSerial
+  , GSerial(..)
     -- ** Even more internal
   , GSumSerial
   , GSumSize
@@ -28,70 +30,78 @@ import Prelude
 --------------------------------------------------------------------------------
 -- $defaults
 --
--- You can use 'gserialize' and 'gdeserialize' as your generic 'Bytes.serialize'
--- and 'Bytes.deserialize' implementations for any 'Representable' type as
--- follows:
+-- You can use 'gserializeDefault' and 'gdeserializeDefault' as your generic
+-- 'Bytes.serialize' and 'Bytes.deserialize' implementations for any 'Representable'
+-- type as follows:
 --
 -- @
 -- instance 'Bytes.Serial' MyType where
---    serialize = 'gserialize'
---    deserialize = 'gdeserialize'
+--    serialize = 'gserializeDefault'
+--    deserialize = 'gdeserializeDefault'
 -- @
 
-gserialize :: (Representable a, GSerial (Rep a), Bytes.MonadPut m) => a -> m ()
-gserialize = \a -> gserialize' (from a)
-{-# INLINABLE gserialize #-}
+gserializeDefault :: (Representable a, GSerial (Rep a), Bytes.MonadPut m) => a -> m ()
+gserializeDefault = \a -> gserialize (from a)
+{-# INLINABLE gserializeDefault #-}
 
-gdeserialize :: (Representable a, GSerial (Rep a), Bytes.MonadGet m) => m a
-gdeserialize = fmap to gdeserialize'
-{-# INLINABLE gdeserialize #-}
+gdeserializeDefault :: (Representable a, GSerial (Rep a), Bytes.MonadGet m) => m a
+gdeserializeDefault = fmap to gdeserialize
+{-# INLINABLE gdeserializeDefault #-}
+
+--------------------------------------------------------------------------------
+
+-- | @'RepGSerial'@ is simply a synonym for
+-- @('Representable' a, 'GSerial' ('Rep' a))@ with the convenient
+-- kind @(* -> 'GHC.Exts.Constraint')@
+class (Representable a, GSerial (Rep a)) => RepGSerial a
+instance (Representable a, GSerial (Rep a)) => RepGSerial a
 
 --------------------------------------------------------------------------------
 
 class GSerial a where
-  gserialize' :: Bytes.MonadPut m => a -> m ()
-  gdeserialize' :: Bytes.MonadGet m => m a
+  gserialize :: Bytes.MonadPut m => a -> m ()
+  gdeserialize :: Bytes.MonadGet m => m a
 
 instance GSerial Z where
-  gserialize' _ = fail "Generics.Instant.Functions.Serial.GSerial Z gserialize' - impossible"
-  gdeserialize' = fail "Generics.Instant.Functions.Serial.GSerial Z gdeserialize' - impossible"
+  gserialize _ = fail "Generics.Instant.Functions.Serial.GSerial Z gserialize - impossible"
+  gdeserialize = fail "Generics.Instant.Functions.Serial.GSerial Z gdeserialize - impossible"
 
 instance GSerial U where
-  gserialize' U = Bytes.serialize ()
-  {-# INLINABLE gserialize' #-}
-  gdeserialize' = Bytes.deserialize >>= \() -> return U
-  {-# INLINABLE gdeserialize' #-}
+  gserialize U = Bytes.serialize ()
+  {-# INLINABLE gserialize #-}
+  gdeserialize = Bytes.deserialize >>= \() -> return U
+  {-# INLINABLE gdeserialize #-}
 
 instance GSerial a => GSerial (CEq c p p a) where
-  gserialize' (C a) = gserialize' a
-  {-# INLINABLE gserialize' #-}
-  gdeserialize' = gdeserialize' >>= \a -> return (C a)
-  {-# INLINABLE gdeserialize' #-}
+  gserialize (C a) = gserialize a
+  {-# INLINABLE gserialize #-}
+  gdeserialize = gdeserialize >>= \a -> return (C a)
+  {-# INLINABLE gdeserialize #-}
 
 instance {-# OVERLAPPABLE #-} GSerial a => GSerial (CEq c p q a) where
-  gserialize' (C a) = gserialize' a
-  {-# INLINABLE gserialize' #-}
-  gdeserialize' = fail "Generics.Instant.Functions.Serial.GSerial (CEq c p q a) gdeserialize' - impossible"
+  gserialize (C a) = gserialize a
+  {-# INLINABLE gserialize #-}
+  gdeserialize = fail "Generics.Instant.Functions.Serial.GSerial (CEq c p q a) gdeserialize - impossible"
 
 instance Bytes.Serial a => GSerial (Var a) where
-  gserialize' (Var a) = Bytes.serialize a
-  {-# INLINABLE gserialize' #-}
-  gdeserialize' = Bytes.deserialize >>= \a -> return (Var a)
-  {-# INLINABLE gdeserialize' #-}
+  gserialize (Var a) = Bytes.serialize a
+  {-# INLINABLE gserialize #-}
+  gdeserialize = Bytes.deserialize >>= \a -> return (Var a)
+  {-# INLINABLE gdeserialize #-}
 
 instance Bytes.Serial a => GSerial (Rec a) where
-  gserialize' (Rec a) = Bytes.serialize a
-  {-# INLINABLE gserialize' #-}
-  gdeserialize' = Bytes.deserialize >>= \a -> return (Rec a)
-  {-# INLINABLE gdeserialize' #-}
+  gserialize (Rec a) = Bytes.serialize a
+  {-# INLINABLE gserialize #-}
+  gdeserialize = Bytes.deserialize >>= \a -> return (Rec a)
+  {-# INLINABLE gdeserialize #-}
 
 instance (GSerial a, GSerial b) => GSerial (a :*: b) where
-  gserialize' (a :*: b) = gserialize' a >> gserialize' b
-  {-# INLINABLE gserialize' #-}
-  gdeserialize' = gdeserialize' >>= \a ->
-                  gdeserialize' >>= \b ->
+  gserialize (a :*: b) = gserialize a >> gserialize b
+  {-# INLINABLE gserialize #-}
+  gdeserialize = gdeserialize >>= \a ->
+                  gdeserialize >>= \b ->
                   return (a :*: b)
-  {-# INLINABLE gdeserialize' #-}
+  {-# INLINABLE gdeserialize #-}
 
 ---
 
@@ -108,8 +118,8 @@ instance
   ( GSumSerial a, GSumSerial b, GSerial a, GSerial b, GSumSize a, GSumSize b
   ) => GSerial (a :+: b)
   where
-    {-# INLINABLE gserialize' #-}
-    gserialize' x
+    {-# INLINABLE gserialize #-}
+    gserialize x
       | predSize <= fromIntegral (maxBound :: Word8)
           = putSum (0 :: Word8) (fromIntegral size) x
       | predSize <= fromIntegral (maxBound :: Word16)
@@ -123,8 +133,8 @@ instance
         size = unTagged (sumSize :: Tagged (a :+: b) Word64)
         predSize = size - 1
 
-    {-# INLINABLE gdeserialize' #-}
-    gdeserialize'
+    {-# INLINABLE gdeserialize #-}
+    gdeserialize
       | predSize <= fromIntegral (maxBound :: Word8)
           = Bytes.deserialize >>= \(c :: Word8) ->
             checkGetSum (fromIntegral size) c
@@ -177,13 +187,13 @@ instance (GSumSerial a, GSumSerial b, GSerial a, GSerial b) => GSumSerial (a :+:
       sizeR = size - sizeL
 
 instance GSerial a => GSumSerial (CEq c p p a) where
-  putSum !code _ ca = Bytes.serialize code >> gserialize' ca
+  putSum !code _ ca = Bytes.serialize code >> gserialize ca
   {-# INLINABLE putSum #-}
-  getSum _ _ = gdeserialize'
+  getSum _ _ = gdeserialize
   {-# INLINABLE getSum #-}
 
 instance {-# OVERLAPPABLE #-} GSerial a => GSumSerial (CEq c p q a) where
-  putSum !code _ ca = Bytes.serialize code >> gserialize' ca
+  putSum !code _ ca = Bytes.serialize code >> gserialize ca
   {-# INLINABLE putSum #-}
   getSum _ _ = fail "Generics.Instant.Functions.Serial.GSumSerial (CEq c p q a) getSum - impossible"
 

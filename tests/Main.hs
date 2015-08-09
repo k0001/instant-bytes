@@ -22,7 +22,8 @@ import Data.Proxy
 
 import qualified Generics.Instant as GI
 import qualified Generics.Instant.TH as GI
-import Generics.Instant.Functions.Bytes (GSerial, gserialize, gdeserialize)
+import Generics.Instant.Functions.Bytes (GSerial, RepGSerial,
+                                         gserializeDefault, gdeserializeDefault)
 
 --------------------------------------------------------------------------------
 -- orphans
@@ -46,8 +47,8 @@ instance Bytes.Serial (Proxy a) where
 data ZZ = ZZ1 Int | ZZ2 Char | ZZ3 ZZ deriving (Show, Eq)
 GI.deriveAll ''ZZ
 instance Bytes.Serial ZZ where
-  serialize = gserialize
-  deserialize = gdeserialize
+  serialize = gserializeDefault
+  deserialize = gdeserializeDefault
 instance Arbitrary ZZ where
   arbitrary = QC.oneof [ ZZ1 <$> QC.arbitrary
                        , ZZ2 <$> QC.arbitrary
@@ -137,8 +138,6 @@ tests = testGroup "QuickCheck - prop_IdGSerial"
   , QC.testProperty "Bar2 Float 'False" (prop_IdGSerial :: Bar2 Float 'False -> Bool)
   ]
 
-prop_IdGSerial
-  :: (Eq a, GI.Representable a, GSerial (GI.Rep a), Show a)
-  => a -> Bool
+prop_IdGSerial :: (Eq a, Show a, RepGSerial a) => a -> Bool
 prop_IdGSerial a =
-  a == Bytes.runGetL gdeserialize (Bytes.runPutL (gserialize a))
+  a == Bytes.runGetL gdeserializeDefault (Bytes.runPutL (gserializeDefault a))
